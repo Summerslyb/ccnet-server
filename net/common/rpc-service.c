@@ -211,11 +211,11 @@ ccnet_start_rpc(CcnetSession *session)
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_create_group,
                                      "create_group",
-                                     searpc_signature_int__string_string_string());
+                                     searpc_signature_int__string_string_string_int());
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_create_org_group,
                                      "create_org_group",
-                                 searpc_signature_int__int_string_string());
+                                 searpc_signature_int__int_string_string_int());
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_remove_group,
                                      "remove_group",
@@ -247,11 +247,15 @@ ccnet_start_rpc(CcnetSession *session)
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_get_groups,
                                      "get_groups",
-                                     searpc_signature_objlist__string());
+                                     searpc_signature_objlist__string_int());
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_get_all_groups,
                                      "get_all_groups",
                                      searpc_signature_objlist__int_int_string());
+    searpc_server_register_function ("ccnet-threaded-rpcserver",
+                                     ccnet_rpc_get_ancestor_groups,
+                                     "get_ancestor_groups",
+                                     searpc_signature_objlist__int());
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_get_group,
                                      "get_group",
@@ -280,6 +284,14 @@ ccnet_start_rpc(CcnetSession *session)
                                      ccnet_rpc_search_groups,
                                      "search_groups",
                                      searpc_signature_objlist__string_int_int());
+    searpc_server_register_function ("ccnet-threaded-rpcserver",
+                                     ccnet_rpc_get_top_groups,
+                                     "get_top_groups",
+                                     searpc_signature_objlist__void());
+    searpc_server_register_function ("ccnet-threaded-rpcserver",
+                                     ccnet_rpc_get_child_groups,
+                                     "get_child_groups",
+                                     searpc_signature_objlist__int());
 
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_create_org,
@@ -341,6 +353,10 @@ ccnet_start_rpc(CcnetSession *session)
                                      ccnet_rpc_get_org_groups,
                                      "get_org_groups",
                                      searpc_signature_objlist__int_int_int());
+    searpc_server_register_function ("ccnet-threaded-rpcserver",
+                                     ccnet_rpc_get_org_top_groups,
+                                     "get_org_top_groups",
+                                     searpc_signature_objlist__int());
     searpc_server_register_function ("ccnet-threaded-rpcserver",
                                      ccnet_rpc_org_user_exists,
                                      "org_user_exists",
@@ -804,6 +820,30 @@ ccnet_rpc_search_groups (const char *group_patt,
 }
 
 GList*
+ccnet_rpc_get_top_groups (GError **error)
+{
+    CcnetGroupManager *group_mgr =
+        ((CcnetServerSession *)session)->group_mgr;
+    GList *groups = NULL;
+
+    groups = ccnet_group_manager_get_top_groups (group_mgr, error);
+
+    return groups;
+}
+
+GList*
+ccnet_rpc_get_child_groups (int group_id, GError **error)
+{
+    CcnetGroupManager *group_mgr =
+        ((CcnetServerSession *)session)->group_mgr;
+    GList *groups = NULL;
+
+    groups = ccnet_group_manager_get_child_groups (group_mgr, group_id, error);
+
+    return groups;
+}
+
+GList*
 ccnet_rpc_search_ldapusers (const char *keyword,
                             int start, int limit,
                             GError **error)
@@ -930,7 +970,7 @@ ccnet_rpc_verify_message (const char *message,
 
 int
 ccnet_rpc_create_group (const char *group_name, const char *user_name,
-                        const char *type, GError **error)
+                        const char *type, int parent_group_id, GError **error)
 {
     CcnetGroupManager *group_mgr = 
         ((CcnetServerSession *)session)->group_mgr;
@@ -942,14 +982,14 @@ ccnet_rpc_create_group (const char *group_name, const char *user_name,
         return -1;
     }
 
-    ret = ccnet_group_manager_create_group (group_mgr, group_name, user_name, error);
+    ret = ccnet_group_manager_create_group (group_mgr, group_name, user_name, parent_group_id, error);
 
     return ret;
 }
 
 int
 ccnet_rpc_create_org_group (int org_id, const char *group_name,
-                            const char *user_name, GError **error)
+                            const char *user_name, int parent_group_id, GError **error)
 {
     CcnetGroupManager *group_mgr = 
         ((CcnetServerSession *)session)->group_mgr;
@@ -961,7 +1001,7 @@ ccnet_rpc_create_org_group (int org_id, const char *group_name,
     }
 
     ret = ccnet_group_manager_create_org_group (group_mgr, org_id,
-                                                group_name, user_name, error);
+                                                group_name, user_name, parent_group_id, error);
 
     return ret;
 }
@@ -979,7 +1019,7 @@ ccnet_rpc_remove_group (int group_id, GError **error)
         return -1;
     }
 
-    ret = ccnet_group_manager_remove_group (group_mgr, group_id, error);
+    ret = ccnet_group_manager_remove_group (group_mgr, group_id, FALSE, error);
 
     return ret;
     
@@ -1101,7 +1141,7 @@ ccnet_rpc_quit_group (int group_id, const char *user_name, GError **error)
 }
 
 GList *
-ccnet_rpc_get_groups (const char *username, GError **error)
+ccnet_rpc_get_groups (const char *username, gboolean return_ancestors, GError **error)
 {
     CcnetGroupManager *group_mgr = 
         ((CcnetServerSession *)session)->group_mgr;
@@ -1113,7 +1153,7 @@ ccnet_rpc_get_groups (const char *username, GError **error)
         return NULL;
     }
 
-    ret = ccnet_group_manager_get_groups_by_user (group_mgr, username, error);
+    ret = ccnet_group_manager_get_groups_by_user (group_mgr, username, return_ancestors, error);
     return ret;
 }
 
@@ -1126,6 +1166,18 @@ ccnet_rpc_get_all_groups (int start, int limit,
     GList *ret = NULL;
 
     ret = ccnet_group_manager_get_all_groups (group_mgr, start, limit, error);
+
+    return ret;
+}
+
+GList *
+ccnet_rpc_get_ancestor_groups (int group_id, GError ** error)
+{
+    CcnetGroupManager *group_mgr =
+        ((CcnetServerSession *)session)->group_mgr;
+    GList *ret = NULL;
+
+    ret = ccnet_group_manager_get_ancestor_groups (group_mgr, group_id);
 
     return ret;
 }
@@ -1259,7 +1311,7 @@ ccnet_rpc_remove_org (int org_id, GError **error)
     group_ids = ccnet_org_manager_get_org_group_ids (org_mgr, org_id, 0, INT_MAX);
     ptr = group_ids;
     while (ptr) {
-        ccnet_group_manager_remove_group (group_mgr, (int)(long)ptr->data, error);
+        ccnet_group_manager_remove_group (group_mgr, (int)(long)ptr->data, TRUE, error);
         ptr = ptr->next;
     }
     g_list_free (group_ids);
@@ -1469,6 +1521,22 @@ ccnet_rpc_get_org_groups (int org_id, int start, int limit, GError **error)
     }
     
     ret = ccnet_org_manager_get_org_groups (org_mgr, org_id, start, limit);
+
+    return ret;
+}
+
+GList *
+ccnet_rpc_get_org_top_groups (int org_id, GError **error)
+{
+    CcnetOrgManager *org_mgr = ((CcnetServerSession *)session)->org_mgr;
+    GList *ret = NULL;
+
+    if (org_id < 0) {
+        g_set_error (error, CCNET_DOMAIN, CCNET_ERR_INTERNAL, "Bad arguments");
+        return NULL;
+    }
+
+    ret = ccnet_org_manager_get_org_top_groups (org_mgr, org_id, error);
 
     return ret;
 }
